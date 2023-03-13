@@ -1,0 +1,143 @@
+using Distributions
+using StatsBase
+import Statistics as stats
+using DataFrames
+using CSV
+using LinearAlgebra
+using Expectations
+using Cumulants
+using Plots
+using Combinatorics
+using SymmetricTensors
+using Polynomials
+using DynamicPolynomials
+using CumulantsUpdates
+
+function generateData(max_mean, max_var, num_samples)
+    #generate two normal distributions
+    mu1 = rand(0:max_mean)
+    mu2 = rand(0: max_mean)
+    sigma1 = rand(0.1: max_var)
+    sigma2 = rand(0.1: max_var)
+    X = Normal(mu1, sigma1)
+    Y = Normal(mu2, sigma2)
+
+    #generate samples from X and Y 
+    x_samples = rand(X, num_samples)
+    y_samples = rand(Y, num_samples)
+
+    #multiply samples to generate data that is not normal 
+    z_vector = x_samples .* y_samples
+
+    return z_vector
+end 
+
+#calculates true expectation of sin function on data 
+function calculateExpectation(data) 
+    expectation = 0 
+    for i in data 
+        expectation += sin(i)
+    end 
+    expectation /= length(data)
+    return expectation
+end 
+
+#creates z as a matrix 
+function generateMatrix(z_vector, num_samples)
+    z_matrix = zeros(num_samples, 2)
+    length = num_samples
+    for i in 1:length
+        z_matrix[i] = z_vector[i]
+    end
+    
+    for i in 1:length
+        z_matrix[i, 2] = 1
+    end
+
+    #return matrix 
+    return z_matrix
+end 
+
+
+
+function findPseudoMoments(number_stored, number_pseudo, data) 
+    #calcualtes first two moments of given data
+    array_of_moments = [moment(data, 1), moment(data, 2)]
+
+    #calculates remaining moments of data up to number_stored
+    for i in 3:number_stored
+        push!(array_of_moments, moment(data, i))
+    end 
+
+    #converts moments to cumulants 
+    moms2cums!(array_of_moments)
+
+    #= Sets cumulants of order from number_stored + 1 up to number_pseudo 
+        to 0 and adds it to cumulant array =#
+    for j in number_stored+1:number_pseudo 
+        #sets dimension of symmetric tensor 
+        dimensions = ones(Int8, 1, j)
+        #symmetric tensor requires block size to be greater than or equal 2
+        for k in 1:j 
+            dimensions[k] *= 2
+        end 
+        #create symmetric tensor of 0 
+        cumulant = SymmetricTensor(zeros(Float64, Tuple(dimensions)))
+        #add to cumulants array 
+        push!(array_of_moments, cumulant)
+    end   
+
+    #converts cumulants back to moments and returns array of moments, now containing pseudo moments
+    return cums2moms(array_of_moments) 
+end 
+
+#returns the moments used in approximation of expectation 
+function findMomentVector(pseudo_moments, number_pseudo_moments)
+    moments_vector = zeros(number_pseudo_moments)
+    for i in 1:number_pseudo_moments
+        index = Vector{Int}(undef, i)
+        for j in 1:i 
+            index[j] = 1
+        end 
+        moments_vector[i] = pseudo_moments[i][index...]
+    end 
+    return moments_vector
+
+end 
+
+function approxPolynomial(data, degree)
+    xs = convert(AbstractVector, @.sin(data))
+    fit = Polynomials.fit(data, xs, degree)
+    return fit
+end 
+
+function approxExpectation(moments_vector, fit, num_moments) 
+    total_sum = 0
+    for i in 1:num_moments
+        total_sum += moments_vector[i] * fit[i]
+    end 
+    return total_sum
+end
+
+function main(max_mean, max_std, num_samples, num_stored, num_pseudo)
+    data = generateData(max_mean, max_std, num_samples)
+    data_matrix = generateMatrix(data, num_samples)
+    pseudo_moments = findPseudoMoments(num_stored, num_pseudo, data_matrix)
+    moments_vector = findMomentVector(pseudo_moments, num_pseudo)
+    fit = approxPolynomial(data, num_pseudo)
+    trueExpectation = calculateExpectation(data)
+    approximateExpectation = approxExpectation(moments_vector, fit, num_pseudo)
+    println(trueExpectation)
+    println(approximateExpectation)
+end 
+
+
+
+main(1, 1, 1000, 3, 8)
+main(1, 1, 1000, 3, 4)
+main(5, 1, 1000, 3, 8)
+main(5, 2, 1000, 3, 8)
+main(10, 2, 1000, 3, 6)
+
+
+
