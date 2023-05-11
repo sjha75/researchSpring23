@@ -6,7 +6,6 @@ using CSV
 using LinearAlgebra
 using Expectations
 using Cumulants
-using Plots
 using Combinatorics
 using SymmetricTensors
 using Polynomials
@@ -66,6 +65,7 @@ function calculateZvector(x_vect, y_vect)
     z_vector = Array{Float64}(undef, size(x_vect, 1))
     for i in 1:size(z_vector, 1)
         z_vector[i] = sin(x_vect[i])*cos(y_vect[i])
+    end 
     return z_vector 
 end
 

@@ -6,7 +6,6 @@ using CSV
 using LinearAlgebra
 using Expectations
 using Cumulants
-using Plots
 using Combinatorics
 using SymmetricTensors
 using Polynomials
@@ -276,6 +275,4 @@ function main()
 
 end 
 
-data = generateMultivariate(1, 1, 1000)
-coefficients_vector_order2 = coefficientsVector(1000, 2, data)
-print(coefficients_vector_order2)
+
