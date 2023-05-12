@@ -156,10 +156,13 @@ function calculate_error_stored(number_stored, coefficients_vector, data_array)
         stored_moments_vector = get_moments_vector(stored_moments_tensors)
         approx_expectation = calculate_moments_approximation(coefficients_vector, stored_moments_vector)
         error += abs(expectation - approx_expectation)
+        println(error)
     end 
 
     return error /= length(data_array)
-end 
+end
+
+
 
 function calculate_error_pseudo(number_stored, number_pseudo, coefficients_vector, data_array)
     error = 0
@@ -189,17 +192,10 @@ end
 function main(samples, amount)
 
    
-    coefficient_vector_order2 = compute_coefficients_vector(2, 1000, -1.5, 1.5)
-    coefficient_vector_order3 = compute_coefficients_vector(3, 1000, -1.5, 1.5)
     coefficient_vector_order4 = compute_coefficients_vector(4, 1000, -1.5, 1.5)
-    coefficient_vector_order5 = compute_coefficients_vector(5, 1000, -1.5, 1.5)
-    coefficient_vector_order6 = compute_coefficients_vector(6, 1000, -1.5, 1.5)
-    coefficient_vector_order7 = compute_coefficients_vector(7, 1000, -1.5, 1.5)
-   
-
     data_array = create_data_array(amount, samples)
+    println(calculate_error_stored(4, coefficient_vector_order4, data_array))
 
- 
 end 
 
 function test_stored_moments(coefficients_vector, order, data)
@@ -218,11 +214,11 @@ function test_stored_moments(coefficients_vector, order, data)
 end 
 
 function least_squares_error(order, data) 
-    coefficients = compute_coefficients_vector(order, 1000, -1.5, 1.5)
+    coefficients = compute_coefficients_vector(order, 1000, -1.5, 1.5) 
     @polyvar x y 
-    xy_monomial = monomials([x,y], 0: order)
-    polynomial = mapreduce(*, +, coefficients, xy_monomial)
-    x_vector = data[:,1]
+    xy_monomial = monomials([x,y], 0: order)   
+    polynomial = mapreduce(*, +, coefficients, xy_monomial) 
+    x_vector = data[:,1]    
     y_vector = data[:,2]
 
     error = 0 
@@ -233,14 +229,40 @@ function least_squares_error(order, data)
     error /= size(data, 1)
 
     return error
-
-
 end 
 
-coefficients_vector = compute_coefficients_vector(4, 1000, -1.5, 1.5)
-data = generate_multivariate_data(1000)
-expectation = test_stored_moments(coefficients_vector, 4, data)
 
-stored_moments = compute_stored_moments(data, 4)
-stored_moments_vector = get_moments_vector(stored_moments)
-expectation2 = calculate_moments_approximation(coefficients_vector, stored_moments_vector)
+main(1000, 20)
+
+
+coefficients_vector_fourth_order = compute_coefficients_vector(4, 1000, -1.5, 1.5)
+coefficients_vector_third_order = compute_coefficients_vector(3, 1000, -1.5, 1.5)
+coefficients_vector_second = compute_coefficients_vector(2, 1000, -1.5, 1.5)
+error_second_order = 0 
+error_third_order = 0 
+error_fourth_order = 0
+
+for i in 1:20 
+    data = generate_multivariate_data(1000)
+    true_expectation = calculate_expectation(data)
+
+
+    expectation_fourth_order = test_stored_moments(coefficients_vector_fourth_order, 4, data)
+    expectation_third_order = test_stored_moments(coefficients_vector_third_order, 3, data)
+    expectation_second_order = test_stored_moments(coefficients_vector_second, 2, data)
+
+
+    error_second_order += abs(expectation_second_order - true_expectation)
+    error_third_order += abs(expectation_third_order - true_expectation)
+    error_fourth_order += abs(expectation_fourth_order - true_expectation)
+end 
+
+println(error_second_order/20)
+println(error_third_order/20)
+println(error_fourth_order/20)
+
+data = generate_multivariate_data(1000)
+error2 = least_squares_error(2, data)
+error3 = least_squares_error(3, data)
+error4 = least_squares_error(4, data)
+error5 = least_squares_error(5, data)
