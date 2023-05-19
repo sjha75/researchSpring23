@@ -1,7 +1,7 @@
 using GLMakie
 using Colors
-include("multivariateMarch10.jl")
-include("multivariateFeb20.jl")
+include("clean_multivariate.jl")
+
 
 
 function plotOriginalData(data, fig, axis) 
@@ -12,13 +12,20 @@ function plotOriginalData(data, fig, axis)
     fig
 end 
 
+function plotData(data, fig, axis)
+    x_vect = data[:,1]
+    y_vect = data[:,2]
+    scatter!(axis, x_vect, y_vect; markersize=15, color = :pink)
+    fig
+end 
+
 aspect=(1, 1, 1)
 perspectiveness=0.5
 fig = Figure(; resolution=(1200, 400))
 ax1 = Axis3(fig[1, 1]; aspect, perspectiveness)
-ax2 = Axis3(fig[1, 2]; aspect, perspectiveness)
-ax3 = Axis3(fig[2, 1]; aspect, perspectiveness)
-ax4 = Axis3(fig[2, 2]; aspect, perspectiveness)
+
+data = generate_multivariate_data(1000)
+plotData(data, fig, ax1)
 
 xs = LinRange(-1.5, 1.5, 100)
 ys = LinRange(-1.5, 1.5, 100)

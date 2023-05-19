@@ -1,4 +1,4 @@
-using Distributions: Normal
+using Distributions: Normal, Exponential, Gamma
 using Random: rand
 using DynamicPolynomials
 using Cumulants: moment
@@ -22,6 +22,13 @@ function generate_data(samples)
     return z
 end
 
+#given distribution, returns number of samples from distribution
+function get_samples_data(samples, distribution)
+    return rand(distribution, samples)
+end 
+
+
+
 #returns bivariate non-gaussian distribution of given number of samples
 function generate_multivariate_data(samples)
     X = generate_data(samples)
@@ -39,6 +46,26 @@ function generate_multivariate_data(samples)
 
     #return matrix 
     return Z
+end 
+
+#given two samples of distributions, returns bivariate non-gaussian distribution of given number of samples 
+function get_multivariate_data(samples, distribution)
+    X = get_samples_data(samples, distribution)
+    Y = get_samples_data(samples, distribution)
+
+    Z = zeros(samples, 2)
+    length = samples 
+    for i in 1:length
+        Z[i] = X[i]
+    end
+    
+    for i in 1:length
+       Z[i, 2] = Y[i]
+    end
+
+    #return matrix 
+    return Z
+
 end 
 
 #returns vector of coefficients for least squares regression for given order
@@ -140,7 +167,7 @@ end
 #calculates actual expectation of function of random variable 
 function calculate_expectation(data)
     expectation = 0 
-    for i in (1:size(data, 1))
+    for i in axes(data, 1)
         expectation += sin(data[i, 1])*cos(data[i, 2])
     end 
     expectation /= size(data, 1)
@@ -156,7 +183,7 @@ function calculate_error_stored(number_stored, coefficients_vector, data_array)
         stored_moments_vector = get_moments_vector(stored_moments_tensors)
         approx_expectation = calculate_moments_approximation(coefficients_vector, stored_moments_vector)
         error += abs(expectation - approx_expectation)
-        println(error)
+      
     end 
 
     return error /= length(data_array)
@@ -177,9 +204,9 @@ function calculate_error_pseudo(number_stored, number_pseudo, coefficients_vecto
     return error
 end 
 
-function create_data_array(amount, samples) 
+function create_data_array(amount, samples, distribution) 
     data1 = generate_multivariate_data(samples)
-    data2 = generate_multivariate_data(samples)
+    data2 = generate_multivariate_data(sample)
     data_array = [data1, data2]
     for i in 3:amount 
         data_new = generate_multivariate_data(samples)
@@ -189,11 +216,13 @@ function create_data_array(amount, samples)
     return data_array
 end 
 
-function main(samples, amount)
 
-   
+function main(samples, amount, distribution)
+
+    coefficient_vector_order2 = compute_coefficients_vector(2, 1000, -1.5, 1.5)
     coefficient_vector_order4 = compute_coefficients_vector(4, 1000, -1.5, 1.5)
-    data_array = create_data_array(amount, samples)
+    data_array = create_data_array(amount, samples, distribution)
+    println(calculate_error_stored(2, coefficient_vector_order2, data_array))
     println(calculate_error_stored(4, coefficient_vector_order4, data_array))
 
 end 
@@ -210,7 +239,7 @@ function test_stored_moments(coefficients_vector, order, data)
         sum += func(data[i, 1], data[i, 2])
     end 
 
-    return sum /= num_samples
+    return sum / num_samples
 end 
 
 function least_squares_error(order, data) 
@@ -222,7 +251,7 @@ function least_squares_error(order, data)
     y_vector = data[:,2]
 
     error = 0 
-    for i in 1(size(data, 1))
+    for i in 1:(size(data, 1))
         temp = polynomial(x_vector[i], y_vector[i]) - sin(x_vector[i])*cos(y_vector[i])
         error += abs(temp)
     end
@@ -232,37 +261,52 @@ function least_squares_error(order, data)
 end 
 
 
-main(1000, 20)
-
-
+coefficients_vector_eigth_order = compute_coefficients_vector(8, 1000, -1.5, 1.5)
+coefficients_vector_seventh_order = compute_coefficients_vector(7, 1000, -1.5, 1.5)
 coefficients_vector_fourth_order = compute_coefficients_vector(4, 1000, -1.5, 1.5)
 coefficients_vector_third_order = compute_coefficients_vector(3, 1000, -1.5, 1.5)
 coefficients_vector_second = compute_coefficients_vector(2, 1000, -1.5, 1.5)
+
 error_second_order = 0 
 error_third_order = 0 
 error_fourth_order = 0
+error_seventh_order = 0
+error_eigth_order = 0
 
-for i in 1:20 
-    data = generate_multivariate_data(1000)
+
+for i in 1:1 
+    data = generate_multivariate_data(1000000)
     true_expectation = calculate_expectation(data)
 
 
     expectation_fourth_order = test_stored_moments(coefficients_vector_fourth_order, 4, data)
     expectation_third_order = test_stored_moments(coefficients_vector_third_order, 3, data)
     expectation_second_order = test_stored_moments(coefficients_vector_second, 2, data)
+    expectation_seventh_order = test_stored_moments(coefficients_vector_seventh_order, 7, data)
+    expectation_eigth_order = test_stored_moments(coefficients_vector_eigth_order, 8, data)
 
 
     error_second_order += abs(expectation_second_order - true_expectation)
     error_third_order += abs(expectation_third_order - true_expectation)
     error_fourth_order += abs(expectation_fourth_order - true_expectation)
+    error_seventh_order += abs(expectation_seventh_order - true_expectation)
+    error_eigth_order += abs(expectation_eigth_order - true_expectation)
 end 
 
-println(error_second_order/20)
-println(error_third_order/20)
-println(error_fourth_order/20)
+println(error_second_order)
+println(error_third_order)
+println(error_fourth_order)
+println(error_seventh_order)
+println(error_eigth_order)
 
-data = generate_multivariate_data(1000)
+
+distribution = Gamma(0.5)
+data = get_multivariate_data(1000, distribution)
+
 error2 = least_squares_error(2, data)
 error3 = least_squares_error(3, data)
 error4 = least_squares_error(4, data)
 error5 = least_squares_error(5, data)
+
+
+println(error3)
