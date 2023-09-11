@@ -5,6 +5,8 @@ using Cumulants: moment
 using CumulantsUpdates: moms2cums!, cums2moms
 using LinearAlgebra: dot
 using SymmetricTensors
+using Base.Iterators: product, flatten
+using Combinatorics: partitions, with_replacement_combinations,multiset_permutations,permutations
 using CairoMakie
 
 
@@ -21,7 +23,7 @@ end
 
 function get_multivariate_data(samples, distribution)
     X = get_samples_data(samples, distribution)
-    Y = get_samples_data(samples, distribution)
+    Y = get_samples_data(samples,distribution)
 
     Z = zeros(samples, 2)
     length = samples 
@@ -53,6 +55,129 @@ function compute_stored_moments(data, number_stored)
     return [moment(data, i) for i = 1 : number_stored]
 end 
 
+
+function complementary_partitions_upto_order(τ::AbstractArray{T,1},order::T) where T<: Integer
+    # generate complementary partitions of a ordinary cumulant index set τ. τ contains only one block so all partitions
+    # are are sub-paritions of the maximal partition
+    # inputs -
+    #       τ - vector of ordinary cumulant index set
+    #       order - maximum cumulant product order
+    # returns -
+    #       complementary partitions - vector of partitions of the index set such that each partition and index 
+    #       set are not both sub-partitions of any partition other than the maximal partition containing one block
+    return partitions_of_order(τ,order)
+end
+
+function complementary_partitions_upto_order(τ::AbstractArray{T},order::Integer) where T <: AbstractArray
+    # generate complementary partitions of a ordinary cumulant index set τ    
+    # inputs -
+    #       τ - vector of ordinary cumulant index set
+    #       order - maximum cumulant product order
+    # returns -
+    #       complementary partitions - vector of partitions of the index set such that each partition and index 
+    #       set are not both sub-partitions of any partition other than the maximal partition containing one block
+
+    maximal_parition = collect(flatten(τ))
+    all_partions = partitions_of_order(maximal_parition,order)
+    if size(τ,1) == 1
+        # τ contains only one block so all partitions are are sub-paritions of the maximal partition
+        return all_partions
+    else
+        # generate sub partitions of τ
+        partitions_of_partition_blocks = map( x -> partitions(x) , τ )
+        combination_of_partitions_of_partition_blocks = product(partitions_of_partition_blocks...)
+        sub_partition = map( tuple -> collect(flatten(tuple)) , combination_of_partitions_of_partition_blocks  ) 
+        return [ i for i in  all_partions if i ∉ sub_partition ]
+    end 
+end
+
+
+function partitions_of_order(τ::AbstractVector{T},order::T) where T<: Integer
+    # generate partitions of an ordinary cumulant index set τ    
+    # inputs -
+    #       τ - vector of ordinary cumulant index set
+    #       order - maximum cumulant product order
+    # returns -
+    #       partitions - vector of partitions of the index set that are of cumulant product order less than order
+    nτ = size(τ,1) # size of index set
+    #set order of size equal to or less than size of index set
+    if order > nτ
+        order = nτ
+    end
+    # paritions by the cumulant product order
+    partition_by_order = map( i -> partitions(τ,i) , nτ-order+1:nτ)
+    # combine all partitions below order
+    parition_less_than_order = flatten(partition_by_order)
+    return parition_less_than_order
+end
+
+function compute_generalized_moment(τ,order,cummulant_array)
+    # compute generalized moment for index set τ  
+    # inputs -
+    #       τ - vector of generalized moment index set
+    #       order - maximum cumulant product order
+    #       cumulant_array - vector of cumulant arrays up to at least order
+    # returns -
+    #       κτ - generalized moment at index set τ 
+ 
+    # obtain generalized moment complementary paritions up to cumulant product order
+    p = complementary_partitions_upto_order(τ,order)
+    κτ = 0
+    for σ in p
+        # compute cumulant product for partition σ
+        κσ = 1
+        for σi in σ
+            # cumulants at parition sub-block
+            nσi = size(σi,1)
+            κσ *= cummulant_array[nσi][σi...]
+        end 
+        κτ += κσ
+    end
+    return κτ
+end
+
+function pseudo_moments_upto_cumulant_product_order(cummulant_array,order)
+    # compute pseudo-moment array from cumulant array by only including cumulant up to certain cumulant product order
+    # inputs -
+    #       cumulant_array - vector of cumulant arrays
+    #       order - maximum cumulant product order
+    # returns -
+    #       moment_array - vector of moment arrays 
+
+    n = size(cummulant_array,1) #maximum order of cumulant
+    m = size(cummulant_array[1],1) #dimension of cumulants
+
+    #initalize moment array based on cumualnt array
+    moment_array = copy(cummulant_array).*0
+
+    for nτ in 1:n
+        #compute pseudo-moments of order nτ
+        for τ in  enumerate_unique_coefficients(1:m,nτ)
+            κτ = compute_generalized_moment(τ,order,cummulant_array)
+            set_index_symmetric_array!(moment_array[nτ],κτ,τ)
+        end
+    end
+
+    return moment_array
+end
+
+function set_index_symmetric_array!(symmetric_array::AbstractArray{T},update,idx::Vector{Int64}) where T <: AbstractFloat
+    # updates value in all matching locations in a symmetric tensor
+    # inputs - 
+    #       symmetric_array - symmetric array to be updated at a specific location
+    #       update - value to be set at block_idx in symmetric_array
+    #       idx - index of array to update
+    n = ndims(symmetric_array) #tensor dimension
+    for i in multiset_permutations(idx,n)
+        symmetric_array[i...] = update #update symmetric value in array
+    end 
+end
+
+function enumerate_unique_coefficients(iz,n)
+    return with_replacement_combinations(iz,n)
+end
+
+
 #computes pseudo moments, returning array of symmetric tensors
 function compute_pseudo_moments(data, number_stored, number_pseudo)
     moments_array = [moment(data, 1), moment(data, 2)]
@@ -78,6 +203,26 @@ function compute_pseudo_moments(data, number_stored, number_pseudo)
     
     #converts cumulants back to moments and returns array of moments, now containing pseudo moments
     return cums2moms(moments_array) 
+
+end 
+
+function compute_pseudo_moments_cumulant_order(data, number_stored, max_product_order) 
+    moments_tensors = [moment(data, 1), moment(data, 2)]
+    for i in 3:number_stored
+        push!(moments_tensors, moment(data, i))
+    end 
+
+    moms2cums!(moments_tensors)
+
+    moments_array = [Array(moments_tensors[1]), Array(moments_tensors[2])]
+
+    for i in 3:number_stored 
+        push!(moments_array, Array(moments_tensors[i]))
+    end 
+
+
+
+    return pseudo_moments_upto_cumulant_product_order(moments_array, max_product_order)
 
 end 
 
@@ -187,32 +332,78 @@ function calculate_error_pseudo(coefficients_array, samples, distribution, func)
     approx_expectation = calculate_moments_approximation(coefficients_array[1], stored_vector)
     println("The error for 2 stored: ", abs(true_expectation - approx_expectation))
 
-    pseudo_tensors_6 = compute_pseudo_moments(data, 2, 6)
-    pseudo_vector_6 = get_moments_vector(pseudo_tensors_6)
-    approx_expectation = calculate_moments_approximation(coefficients_array[5], pseudo_vector_6)
-    println("The error for 2 stored, 6 pseudo: ", abs(true_expectation - approx_expectation))
-
-
-    pseudo_tensors_7 = compute_pseudo_moments(data, 2, 7)
-    pseudo_vector_7 = get_moments_vector(pseudo_tensors_7)
-    approx_expectation = calculate_moments_approximation(coefficients_array[6], pseudo_vector_7)
-    println("The error for 2 stored, 7 pseudo: ", abs(true_expectation - approx_expectation))
-
     stored_tensors = compute_stored_moments(data, 3)
     stored_vector = get_moments_vector(stored_tensors)
     approx_expectation = calculate_moments_approximation(coefficients_array[2], stored_vector)
     println("The error for 3 stored: ", abs(true_expectation - approx_expectation))
 
-    pseudo_tensors_6 = compute_pseudo_moments(data, 3, 6)
-    pseudo_vector_6 = get_moments_vector(pseudo_tensors_6)
-    approx_expectation = calculate_moments_approximation(coefficients_array[5], pseudo_vector_6)
-    println("The error for 3 stored, 6 pseudo: ", abs(true_expectation - approx_expectation))
+    stored_tensors = compute_stored_moments(data, 4)
+    stored_vector = get_moments_vector(stored_tensors)
+    approx_expectation = calculate_moments_approximation(coefficients_array[3], stored_vector)
+    println("The error for 4 stored: ", abs(true_expectation - approx_expectation))
+
+    pseudo_tensors = compute_pseudo_moments(data, 2, 6)
+    stored_vector = get_moments_vector(pseudo_tensors)
+    approx_expectation = calculate_moments_approximation(coefficients_array[5], stored_vector)
+    println("The error for cumulant truncation 2 stored, 6 pseudo: ", abs(true_expectation - approx_expectation))
+
+    pseudo_tensors = compute_pseudo_moments_cumulant_order(data, 6, 2)
+    stored_vector = get_moments_vector(pseudo_tensors)
+    approx_expectation = calculate_moments_approximation(coefficients_array[5], stored_vector)
+    println("The error for max cumulant order 2, order 6: ", abs(true_expectation - approx_expectation))
+
+    pseudo_tensors = compute_pseudo_moments(data, 3, 6)
+    stored_vector = get_moments_vector(pseudo_tensors)
+    approx_expectation = calculate_moments_approximation(coefficients_array[5], stored_vector)
+    println("The error for cumulant truncation 3 stored, 6 pseudo: ", abs(true_expectation - approx_expectation))
+
+    pseudo_tensors = compute_pseudo_moments_cumulant_order(data, 6, 3)
+    stored_vector = get_moments_vector(pseudo_tensors)
+    approx_expectation = calculate_moments_approximation(coefficients_array[5], stored_vector)
+    println("The error for max cumulant order 3, order 6: ", abs(true_expectation - approx_expectation))
 
 
-    pseudo_tensors_7 = compute_pseudo_moments(data, 3, 7)
-    pseudo_vector_7 = get_moments_vector(pseudo_tensors_7)
-    approx_expectation = calculate_moments_approximation(coefficients_array[6], pseudo_vector_7)
-    println("The error for 3 stored, 7 pseudo: ", abs(true_expectation - approx_expectation))
+    pseudo_tensors = compute_pseudo_moments_cumulant_order(data, 6, 4)
+    stored_vector = get_moments_vector(pseudo_tensors)
+    approx_expectation = calculate_moments_approximation(coefficients_array[5], stored_vector)
+    println("The error for max cumulant order 4, order 6: ", abs(true_expectation - approx_expectation))
+
+    pseudo_tensors = compute_pseudo_moments(data, 4, 6)
+    stored_vector = get_moments_vector(pseudo_tensors)
+    approx_expectation = calculate_moments_approximation(coefficients_array[5], stored_vector)
+    println("The error for cumulant truncation 4 stored, 6 pseudo: ", abs(true_expectation - approx_expectation))
+
+    pseudo_tensors = compute_pseudo_moments_cumulant_order(data, 7, 2)
+    stored_vector = get_moments_vector(pseudo_tensors)
+    approx_expectation = calculate_moments_approximation(coefficients_array[6], stored_vector)
+    println("The error for max cumulant order 2, order 7: ", abs(true_expectation - approx_expectation))
+
+    pseudo_tensors = compute_pseudo_moments(data, 2, 7)
+    stored_vector = get_moments_vector(pseudo_tensors)
+    approx_expectation = calculate_moments_approximation(coefficients_array[6], stored_vector)
+    println("The error for cumulant truncation 2 stored, 7 pseudo: ", abs(true_expectation - approx_expectation))
+
+    pseudo_tensors = compute_pseudo_moments_cumulant_order(data, 7, 3)
+    stored_vector = get_moments_vector(pseudo_tensors)
+    approx_expectation = calculate_moments_approximation(coefficients_array[6], stored_vector)
+    println("The error for max cumulant order 3, order 7: ", abs(true_expectation - approx_expectation))
+
+    pseudo_tensors = compute_pseudo_moments(data, 3, 7)
+    stored_vector = get_moments_vector(pseudo_tensors)
+    approx_expectation = calculate_moments_approximation(coefficients_array[6], stored_vector)
+    println("The error for cumulant truncation 3 stored, 7 pseudo: ", abs(true_expectation - approx_expectation))
+
+    pseudo_tensors = compute_pseudo_moments_cumulant_order(data, 7, 4)
+    stored_vector = get_moments_vector(pseudo_tensors)
+    approx_expectation = calculate_moments_approximation(coefficients_array[6], stored_vector)
+    println("The error for max cumulant order 4, order 7: ", abs(true_expectation - approx_expectation))
+
+    pseudo_tensors = compute_pseudo_moments(data, 4, 7)
+    stored_vector = get_moments_vector(pseudo_tensors)
+    approx_expectation = calculate_moments_approximation(coefficients_array[6], stored_vector)
+    println("The error for cumulant truncation 4 stored, 7 pseudo: ", abs(true_expectation - approx_expectation))
+
+   
 end 
 
 function least_squares_error(data, order, coefficients_array)
@@ -237,11 +428,9 @@ distribution = Exponential(0.5)
 data = get_multivariate_data(100000, distribution)
 plot_data_samples(data)
 coefficients_array = compute_coefficients_array(func)
-print(coefficients_array[1])
-coefficients_array[2]
 
-calculate_error_stored(7, coefficients_array, 1000000, distribution, func)
-calculate_error_pseudo(coefficients_array, 100000, distribution, func)
+calculate_error_pseudo(coefficients_array, 100, distribution, func)
+
 
 
 
